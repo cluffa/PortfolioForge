@@ -60,13 +60,8 @@ fn main() -> Result<()> {
                 // Convert images to PDF before adding
                 let (final_name, final_data, mime) = match ext.as_str() {
                     "png" | "jpg" | "jpeg" | "tiff" | "tif" | "webp" | "bmp" | "gif" => {
-                        let pdf_name = format!(
-                            "{}.pdf",
-                            std::path::Path::new(original_name)
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or(original_name)
-                        );
+                        // Name: stem.orig_ext.pdf to avoid collisions
+                        let pdf_name = format!("{}.pdf", original_name);
                         match image_converter::image_to_pdf(&data) {
                             Ok(pdf_data) => (pdf_name, pdf_data, "application/pdf".to_string()),
                             Err(e) => {
@@ -79,13 +74,7 @@ fn main() -> Result<()> {
                         }
                     }
                     "docx" => {
-                        let pdf_name = format!(
-                            "{}.pdf",
-                            std::path::Path::new(original_name)
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or(original_name)
-                        );
+                        let pdf_name = format!("{}.pdf", original_name);
                         match docx_converter::docx_to_pdf(&data) {
                             Ok(pdf_data) => (pdf_name, pdf_data, "application/pdf".to_string()),
                             Err(e) => {

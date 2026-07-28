@@ -55,6 +55,13 @@ impl PortfolioBuilder {
                 Object::Dictionary({
                     let mut params = Dictionary::new();
                     params.set("Size", Object::Integer(data.len() as i64));
+                    // Add modification date in PDF format
+                    let now = chrono::Utc::now();
+                    let date_str = now.format("D:%Y%m%d%H%M%SZ").to_string();
+                    params.set("ModDate", Object::String(
+                        date_str.into_bytes(),
+                        lopdf::StringFormat::Literal,
+                    ));
                     params
                 }),
             );

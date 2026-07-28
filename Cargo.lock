@@ -300,7 +300,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -809,7 +811,6 @@ dependencies = [
 name = "image-converter"
 version = "0.1.0"
 dependencies = [
- "flate2",
  "image",
  "lopdf",
  "thiserror 2.0.19",
@@ -1026,6 +1027,7 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "getrandom 0.4.3",
+ "image",
  "indexmap",
  "itoa",
  "jiff",
@@ -1257,6 +1259,7 @@ dependencies = [
 name = "portfolio-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "lopdf",
  "thiserror 2.0.19",
 ]
