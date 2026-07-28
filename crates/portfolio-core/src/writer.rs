@@ -19,7 +19,7 @@ impl PortfolioBuilder {
         let doc = lopdf::Document::load_from(Cursor::new(template.as_ref()))?;
         Ok(Self {
             doc,
-            view_mode: ViewMode::Details,
+            view_mode: ViewMode::Tile,
             files: Vec::new(),
         })
     }
@@ -67,7 +67,7 @@ impl PortfolioBuilder {
             );
 
             let mut stream = Stream::new(stream_dict, data.clone());
-            stream.allows_compression = false;
+            stream.allows_compression = true;
             self.doc.objects.insert(stream_id, Object::Stream(stream));
 
             // File specification dictionary
@@ -99,20 +99,37 @@ impl PortfolioBuilder {
             .objects
             .insert(ef_id, Object::Dictionary(ef_dict));
 
-        // Update the catalog — modify it through catalog_mut()
+        // Update the catalog — preserve existing Collection settings from template
         {
-            let catalog = self.doc.catalog_mut()?;
+            // First, check if there's an existing Collection with an ID we can update
+            let existing_coll_id = {
+                let catalog = self.doc.catalog()?;
+                catalog.get(b"Collection").ok()
+                    .and_then(|o| o.as_reference().ok())
+            };
 
-            // Update /Collection view mode
-            let mut collection = Dictionary::new();
-            collection.set("Type", "Collection");
-            collection.set(
-                "View",
-                Object::Name(self.view_mode.to_pdf_name().as_bytes().to_vec()),
-            );
-            catalog.set("Collection", Object::Dictionary(collection));
+            if let Some(coll_id) = existing_coll_id {
+                // Update the existing Collection object's /View
+                if let Ok(coll) = self.doc.get_object_mut(coll_id) {
+                    if let Ok(dict) = coll.as_dict_mut() {
+                        dict.set("View", Object::Name(
+                            self.view_mode.to_pdf_name().as_bytes().to_vec(),
+                        ));
+                    }
+                }
+            } else {
+                // No existing Collection — create one
+                let catalog = self.doc.catalog_mut()?;
+                let mut collection = Dictionary::new();
+                collection.set("Type", "Collection");
+                collection.set("View", Object::Name(
+                    self.view_mode.to_pdf_name().as_bytes().to_vec(),
+                ));
+                catalog.set("Collection", Object::Dictionary(collection));
+            }
 
             // Set /Names -> /EmbeddedFiles
+            let catalog = self.doc.catalog_mut()?;
             let mut names = Dictionary::new();
             names.set("EmbeddedFiles", Object::Reference(ef_id));
             catalog.set("Names", Object::Dictionary(names));
