@@ -5,5 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-lopdf = "0.34"
+lopdf = "0.44"
 thiserror = "2"

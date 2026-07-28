@@ -1,9 +1,11 @@
+use std::io::Cursor;
+
 use lopdf::{Dictionary, Object, Stream};
 
 use crate::error::PortfolioError;
 use crate::types::ViewMode;
 
-/// Builder for creating new PDF Portfolios
+/// Builder for creating new PDF Portfolios using an Acrobat-generated template
 pub struct PortfolioBuilder {
     doc: lopdf::Document,
     view_mode: ViewMode,
@@ -11,79 +13,10 @@ pub struct PortfolioBuilder {
 }
 
 impl PortfolioBuilder {
-    /// Create a fresh portfolio builder with a minimal blank PDF page
+    /// Start building a portfolio from the Acrobat-generated blank template
     pub fn new() -> Result<Self, PortfolioError> {
-        let mut doc = lopdf::Document::new();
-
-        // Create a minimal blank A4 page
-        let page_id = (1, 0u16);
-        let pages_id = (2, 0u16);
-        let catalog_id = (3, 0u16);
-
-        // Content stream for a blank page
-        let content = b"q\nBT\n/F1 24 Tf\n100 700 Td\n(PortfolioForge) Tj\nET\nQ\n";
-        let mut content_stream = Stream::new(Dictionary::new(), content.to_vec());
-        content_stream.allows_compression = true;
-        doc.objects
-            .insert((4, 0u16), Object::Stream(content_stream));
-
-        // Page object
-        let mut page = Dictionary::new();
-        page.set("Type", "Page");
-        page.set("Parent", Object::Reference(pages_id));
-        page.set("MediaBox", Object::Array(vec![
-            Object::Integer(0),
-            Object::Integer(0),
-            Object::Integer(612),
-            Object::Integer(792),
-        ]));
-        page.set("Contents", Object::Reference((4, 0u16)));
-        page.set(
-            "Resources",
-            Object::Dictionary({
-                let mut res = Dictionary::new();
-                res.set(
-                    "Font",
-                    Object::Dictionary({
-                        let mut fonts = Dictionary::new();
-                        fonts.set(
-                            "F1",
-                            Object::Dictionary({
-                                let mut f1 = Dictionary::new();
-                                f1.set("Type", "Font");
-                                f1.set("Subtype", "Type1");
-                                f1.set("BaseFont", "Helvetica");
-                                f1
-                            }),
-                        );
-                        fonts
-                    }),
-                );
-                res
-            }),
-        );
-        doc.objects.insert(page_id, Object::Dictionary(page));
-
-        // Pages object
-        let mut pages = Dictionary::new();
-        pages.set("Type", "Pages");
-        pages.set(
-            "Kids",
-            Object::Array(vec![Object::Reference(page_id)]),
-        );
-        pages.set("Count", Object::Integer(1));
-        doc.objects.insert(pages_id, Object::Dictionary(pages));
-
-        // Catalog object
-        let mut catalog = Dictionary::new();
-        catalog.set("Type", "Catalog");
-        catalog.set("Pages", Object::Reference(pages_id));
-        doc.objects.insert(catalog_id, Object::Dictionary(catalog));
-
-        // Set trailer root
-        doc.trailer.set("Root", Object::Reference(catalog_id));
-        doc.max_id = 4;
-
+        let template = include_bytes!("../../../samples/Portfolio2.pdf");
+        let doc = lopdf::Document::load_from(Cursor::new(template.as_ref()))?;
         Ok(Self {
             doc,
             view_mode: ViewMode::Details,
@@ -133,8 +66,8 @@ impl PortfolioBuilder {
             // File specification dictionary
             let mut fs_dict = Dictionary::new();
             fs_dict.set("Type", "Filespec");
-            fs_dict.set("F", name.as_str());
-            fs_dict.set("UF", name.as_str());
+            fs_dict.set("F", Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+            fs_dict.set("UF", Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
 
             let mut ef_dict = Dictionary::new();
             ef_dict.set("F", Object::Reference(stream_id));
@@ -151,7 +84,7 @@ impl PortfolioBuilder {
             names_array.push(Object::Reference(file_spec_id));
         }
 
-        // /EmbeddedFiles dictionary
+        // /EmbeddedFiles dictionary with /Names array
         let mut ef_dict = Dictionary::new();
         ef_dict.set("Names", Object::Array(names_array));
         let ef_id = (next_id, 0u16);
@@ -159,33 +92,36 @@ impl PortfolioBuilder {
             .objects
             .insert(ef_id, Object::Dictionary(ef_dict));
 
-        // Add /Collection and /Names to catalog
-        let catalog_id = self
+        // Update the catalog — modify it through catalog_mut()
+        {
+            let catalog = self.doc.catalog_mut()?;
+
+            // Update /Collection view mode
+            let mut collection = Dictionary::new();
+            collection.set("Type", "Collection");
+            collection.set(
+                "View",
+                Object::Name(self.view_mode.to_pdf_name().as_bytes().to_vec()),
+            );
+            catalog.set("Collection", Object::Dictionary(collection));
+
+            // Set /Names -> /EmbeddedFiles
+            let mut names = Dictionary::new();
+            names.set("EmbeddedFiles", Object::Reference(ef_id));
+            catalog.set("Names", Object::Dictionary(names));
+        }
+
+        // Save with updated max_id so new objects get included in xref
+        let max_obj_id = self
             .doc
-            .trailer
-            .get(b"Root")
-            .and_then(|o| o.as_reference())
-            .map_err(|_| PortfolioError::ParseError(lopdf::Error::Type))?;
-
-        let catalog = self.doc.get_dictionary_mut(catalog_id)?;
-
-        let mut collection = Dictionary::new();
-        collection.set("Type", "Collection");
-        collection.set(
-            "View",
-            Object::Name(self.view_mode.to_pdf_name().as_bytes().to_vec()),
-        );
-        catalog.set("Collection", Object::Dictionary(collection));
-
-        let mut names = Dictionary::new();
-        names.set("EmbeddedFiles", Object::Reference(ef_id));
-        catalog.set("Names", Object::Dictionary(names));
-
-        // Save to bytes
-        let mut buf = Vec::new();
-        // Update max_id to include all objects we added
-        let max_obj_id = self.doc.objects.keys().map(|&(id, _)| id).max().unwrap_or(0);
+            .objects
+            .keys()
+            .map(|&(id, _)| id)
+            .max()
+            .unwrap_or(0);
         self.doc.max_id = max_obj_id;
+
+        let mut buf = Vec::new();
         self.doc.save_to(&mut buf)?;
         Ok(buf)
     }

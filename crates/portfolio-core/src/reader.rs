@@ -40,7 +40,8 @@ impl Portfolio {
             .as_dict()
             .ok()
             .and_then(|coll_dict| coll_dict.get(b"View").ok())
-            .and_then(|v| v.as_name_str().ok())
+            .and_then(|v| v.as_name().ok())
+            .and_then(|bytes| std::str::from_utf8(bytes).ok())
             .map(|v| match v {
                 "D" => ViewMode::Details,
                 "T" => ViewMode::Tile,
@@ -114,7 +115,10 @@ impl Portfolio {
 
         let names_dict = names_dict
             .as_dict()
-            .map_err(|_| PortfolioError::ParseError(lopdf::Error::Type))?;
+            .map_err(|_| PortfolioError::ParseError(lopdf::Error::ObjectType {
+                expected: "Dictionary",
+                found: "other",
+            }))?;
 
         // /Names -> /EmbeddedFiles (dereference)
         let ef_obj = match names_dict.get_deref(b"EmbeddedFiles", doc) {
@@ -124,7 +128,10 @@ impl Portfolio {
 
         let ef_dict = ef_obj
             .as_dict()
-            .map_err(|_| PortfolioError::ParseError(lopdf::Error::Type))?;
+            .map_err(|_| PortfolioError::ParseError(lopdf::Error::ObjectType {
+                expected: "Dictionary",
+                found: "other",
+            }))?;
 
         // /EmbeddedFiles -> /Names array (dereference)
         let names_array = match ef_dict.get_deref(b"Names", doc) {
@@ -139,16 +146,19 @@ impl Portfolio {
 
         let names = names_array
             .as_array()
-            .map_err(|_| PortfolioError::ParseError(lopdf::Error::Type))?;
+            .map_err(|_| PortfolioError::ParseError(lopdf::Error::ObjectType {
+                expected: "Array",
+                found: "other",
+            }))?;
 
         // Parse the alternating [ name ref name ref ... ] array
         let mut i = 0;
         while i + 1 < names.len() {
-            // The name is a PDF string
-            let name = names[i]
-                .as_string()
-                .unwrap_or_else(|_| std::borrow::Cow::Borrowed("unknown"))
-                .into_owned();
+            // The name is a PDF string (Object::String)
+            let name_bytes = names[i]
+                .as_str()
+                .unwrap_or(b"unknown");
+            let name = String::from_utf8_lossy(name_bytes).into_owned();
 
             let file_spec_ref = &names[i + 1];
             let file_spec_id = file_spec_ref.as_reference().ok();
@@ -162,8 +172,7 @@ impl Portfolio {
                             .or_else(|_| file_dict.get(b"F"));
 
                         let filename = if let Ok(n) = raw_name {
-                            n.as_string()
-                                .unwrap_or_else(|_| std::borrow::Cow::Borrowed(&name))
+                            String::from_utf8_lossy(n.as_str().unwrap_or(b""))
                                 .into_owned()
                         } else {
                             name.clone()
