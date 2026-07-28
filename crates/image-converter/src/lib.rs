@@ -19,32 +19,37 @@ pub enum ConvertError {
 /// Convert an image (PNG, JPG, TIFF, WebP, BMP, GIF) to a single-page PDF.
 /// Uses lopdf's built-in image handling for correct XObject construction.
 pub fn image_to_pdf(data: &[u8]) -> Result<Vec<u8>, ConvertError> {
-    // Use lopdf's built-in image_from which handles all formats correctly
+    image_to_pdf_with_dpi(data, 150.0)
+}
+
+/// Convert with a custom DPI (default 150 for good on-screen quality)
+pub fn image_to_pdf_with_dpi(data: &[u8], dpi: f64) -> Result<Vec<u8>, ConvertError> {
     let image_stream = lopdf::xobject::image_from(data.to_vec())?;
 
-    // Get image dimensions from the stream dictionary
-    let width = image_stream
+    let px_w = image_stream
         .dict
         .get(b"Width")
         .and_then(|o| o.as_i64())
-        .unwrap_or(100);
-    let height = image_stream
+        .unwrap_or(100) as f64;
+    let px_h = image_stream
         .dict
         .get(b"Height")
         .and_then(|o| o.as_i64())
-        .unwrap_or(100);
+        .unwrap_or(100) as f64;
 
-    // Build a PDF document with a single page containing the image
+    // Scale: pixels → points at given DPI (1 inch = 72 points)
+    let scale = 72.0 / dpi;
+    let pt_w = px_w * scale;
+    let pt_h = px_h * scale;
+
     let mut doc = lopdf::Document::new();
     doc.version = "1.7".to_string();
 
-    // Image XObject — already properly constructed by lopdf
     let image_id = (1, 0u16);
     doc.objects.insert(image_id, Object::Stream(image_stream));
 
-    // Content stream: scale and draw the image
-    // PDF units are points (1/72 inch). Map pixels 1:1 to points.
-    let content = format!("q\n{width} 0 0 {height} 0 0 cm\n/Im0 Do\nQ");
+    // Draw image scaled to pt dimensions
+    let content = format!("q\n{pt_w:.0} 0 0 {pt_h:.0} 0 0 cm\n/Im0 Do\nQ");
     let content_stream = Stream::new(Dictionary::new(), content.into_bytes());
     let content_id = (2, 0u16);
     doc.objects.insert(content_id, Object::Stream(content_stream));
@@ -62,8 +67,8 @@ pub fn image_to_pdf(data: &[u8]) -> Result<Vec<u8>, ConvertError> {
     page.set("MediaBox", Object::Array(vec![
         Object::Integer(0),
         Object::Integer(0),
-        Object::Integer(width),
-        Object::Integer(height),
+        Object::Integer(pt_w as i64),
+        Object::Integer(pt_h as i64),
     ]));
     page.set("Contents", Object::Reference(content_id));
     page.set("Resources", Object::Dictionary(resources));
