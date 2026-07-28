@@ -106,13 +106,16 @@ fn main() -> Result<()> {
 
 fn cmd_create(output: PathBuf, files: Vec<PathBuf>) -> Result<()> {
     let mut builder = PortfolioBuilder::new()?;
+    let mut added = 0usize;
     for path in &files {
-        let (final_name, final_data, mime) = convert_if_needed(path)?;
-        builder.add_file(&final_name, final_data, &mime);
+        for (name, data, _mime) in convert_if_needed(path)? {
+            builder.add_file(&name, data, "");
+            added += 1;
+        }
     }
     let pdf_data = builder.build()?;
     std::fs::write(&output, pdf_data)?;
-    println!("Created portfolio: {} ({} files)", output.display(), files.len());
+    println!("Created portfolio: {} ({} files)", output.display(), added);
     Ok(())
 }
 
@@ -185,13 +188,16 @@ fn cmd_validate(portfolio: PathBuf) -> Result<()> {
 fn cmd_add(portfolio: PathBuf, files: Vec<PathBuf>) -> Result<()> {
     let data = std::fs::read(&portfolio)?;
     let mut editor = PortfolioEditor::open(&data)?;
+    let mut added = 0usize;
     for path in &files {
-        let (name, file_data, _) = convert_if_needed(path)?;
-        editor.add_file(&name, file_data)?;
+        for (name, file_data, _) in convert_if_needed(path)? {
+            editor.add_file(&name, file_data)?;
+            added += 1;
+        }
     }
     let modified = editor.save()?;
     std::fs::write(&portfolio, modified)?;
-    println!("Added {} file(s) to {}", files.len(), portfolio.display());
+    println!("Added {} file(s) to {}", added, portfolio.display());
     cmd_list(portfolio)?;
     Ok(())
 }
@@ -222,10 +228,11 @@ fn cmd_replace(
             .unwrap_or("unnamed")
             .to_string()
     });
-    let (_, file_data, _) = convert_if_needed(&new)?;
+    let entries = convert_if_needed(&new)?;
+    let (_, file_data, _) = entries.first().context("No files in replacement")?;
     let data = std::fs::read(&portfolio)?;
     let mut editor = PortfolioEditor::open(&data)?;
-    editor.replace_file(&old, &new_name, file_data)?;
+    editor.replace_file(&old, &new_name, file_data.clone())?;
     let modified = editor.save()?;
     std::fs::write(&portfolio, modified)?;
     println!("Replaced '{}' → '{}' in {}", old, new_name, portfolio.display());
@@ -260,7 +267,9 @@ fn cmd_reorder(portfolio: PathBuf, names: Vec<String>) -> Result<()> {
 
 // ── Helpers ──
 
-fn convert_if_needed(path: &std::path::Path) -> Result<(String, Vec<u8>, String)> {
+/// Returns one or more (name, data, mime) tuples. Portfolios get expanded into their
+/// constituent files; everything else returns a single entry (with auto-conversion).
+fn convert_if_needed(path: &std::path::Path) -> Result<Vec<(String, Vec<u8>, String)>> {
     let original_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -272,28 +281,52 @@ fn convert_if_needed(path: &std::path::Path) -> Result<(String, Vec<u8>, String)
         .to_lowercase();
     let data = std::fs::read(path)?;
 
+    // If it's a PDF portfolio, expand it into its files
+    if ext == "pdf" && portfolio_core::Portfolio::is_portfolio(&data) {
+        let pf = portfolio_core::Portfolio::open(&data)
+            .context("Failed to open portfolio")?;
+        let mut entries = Vec::new();
+        for file in pf.files() {
+            let (name, data, mime) = convert_bytes(&file.name, &file.data);
+            entries.push((name, data, mime));
+        }
+        return Ok(entries);
+    }
+
+    let (name, data, mime) = convert_bytes(original_name, &data);
+    Ok(vec![(name, data, mime)])
+}
+
+/// Convert a single file by name and bytes (handles images, docx, passthrough)
+fn convert_bytes(name: &str, data: &[u8]) -> (String, Vec<u8>, String) {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
     match ext.as_str() {
         "png" | "jpg" | "jpeg" | "tiff" | "tif" | "webp" | "bmp" | "gif" => {
-            let pdf_name = format!("{}.pdf", original_name);
-            match image_converter::image_to_pdf(&data) {
-                Ok(pdf_data) => Ok((pdf_name, pdf_data, "application/pdf".into())),
+            let pdf_name = format!("{}.pdf", name);
+            match image_converter::image_to_pdf(data) {
+                Ok(pdf_data) => (pdf_name, pdf_data, "application/pdf".into()),
                 Err(e) => {
-                    eprintln!("Warning: failed to convert {}, adding as-is: {}", original_name, e);
-                    Ok((original_name.into(), data, guess_mime(original_name)))
+                    eprintln!("Warning: failed to convert {}, adding as-is: {}", name, e);
+                    (name.into(), data.to_vec(), guess_mime(name))
                 }
             }
         }
         "docx" => {
-            let pdf_name = format!("{}.pdf", original_name);
-            match docx_converter::docx_to_pdf(&data) {
-                Ok(pdf_data) => Ok((pdf_name, pdf_data, "application/pdf".into())),
+            let pdf_name = format!("{}.pdf", name);
+            match docx_converter::docx_to_pdf(data) {
+                Ok(pdf_data) => (pdf_name, pdf_data, "application/pdf".into()),
                 Err(e) => {
-                    eprintln!("Warning: failed to convert {}, adding as-is: {}", original_name, e);
-                    Ok((original_name.into(), data, guess_mime(original_name)))
+                    eprintln!("Warning: failed to convert {}, adding as-is: {}", name, e);
+                    (name.into(), data.to_vec(), guess_mime(name))
                 }
             }
         }
-        _ => Ok((original_name.into(), data, guess_mime(original_name))),
+        _ => (name.into(), data.to_vec(), guess_mime(name)),
     }
 }
 
