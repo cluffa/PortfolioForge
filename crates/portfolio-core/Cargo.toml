@@ -1,0 +1,9 @@
+[package]
+name = "portfolio-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lopdf = "0.34"
+thiserror = "2"

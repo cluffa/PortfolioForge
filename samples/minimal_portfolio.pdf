@@ -1,0 +1,65 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+/Collection <<
+  /Type /Collection
+  /View D
+>>
+/Names <<
+  /EmbeddedFiles <<
+    /Names [ (embedded.txt) 5 0 R ]
+  >>
+>>
+>>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [ 3 0 R ] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 612 792 ] /Contents 4 0 R /Resources << >> >>
+endobj
+4 0 obj
+<< /Length 44 >>
+stream
+BT /F1 12 Tf 100 700 Td (PDF Portfolio) Tj ET
+endstream
+endobj
+5 0 obj
+<<
+/Type /Filespec
+/F (embedded.txt)
+/UF (embedded.txt)
+/EF << /F 6 0 R >>
+/Desc (A sample embedded text file)
+>>
+endobj
+6 0 obj
+<<
+/Type /EmbeddedFile
+/Length 55
+/Params << /ModDate (D:20260728164425Z) /Size 55 >>
+>>
+stream
+Hello, this is an embedded document in a PDF Portfolio.
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000186 00000 n 
+0000000245 00000 n 
+0000000351 00000 n 
+0000000446 00000 n 
+0000000575 00000 n 
+trailer
+<<
+/Size 7
+/Root 1 0 R
+>>
+startxref
+752
+%%EOF

@@ -1,0 +1,9 @@
+[package]
+name = "image-converter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Stub - not yet implemented
+
+[dependencies]
