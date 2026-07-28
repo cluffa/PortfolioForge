@@ -46,6 +46,9 @@ jobs:
           if ! command -v wasm-pack &>/dev/null; then
             curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
           fi
+          # Suppress update nag
+          mkdir -p ~/.wasm-pack
+          echo "[telemetry]\ncheck_for_updates = false" > ~/.wasm-pack/config.toml
 
       - name: Build WASM
         run: wasm-pack build crates/portfolio-wasm --target web --out-dir ../../apps/web/public/wasm
