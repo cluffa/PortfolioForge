@@ -18,6 +18,7 @@ const actionsSection = $('#actions-section');
 const clearBtn = $('#clear-btn');
 const createBtn = $('#create-btn');
 const createStatus = $('#create-status');
+const convertToggle = $('#convert-toggle');
 const reorderBtn = $('#reorder-btn');
 const openInput = $('#open-input');
 const openBtn = $('#open-btn');
@@ -162,9 +163,8 @@ async function createPortfolio() {
       fileEntries.push({ name, data: Array.from(info.data) });
     }
     const json = JSON.stringify(fileEntries);
-    const pdfBytes = create_portfolio(json);
+    const pdfBytes = create_portfolio(json, convertToggle.checked);
     
-    // Download
     downloadBytes(pdfBytes, 'portfolio.pdf', 'application/pdf');
     createStatus.textContent = 'Done!';
   } catch (e) {

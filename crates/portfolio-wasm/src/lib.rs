@@ -1,8 +1,9 @@
 use wasm_bindgen::prelude::*;
 
 /// Create a PDF Portfolio from files. `files_json` is JSON array of {name, data: byte array}.
+/// Set `convert` to true to auto-convert images and DOCX to PDF.
 #[wasm_bindgen]
-pub fn create_portfolio(files_json: &str) -> Result<Vec<u8>, JsValue> {
+pub fn create_portfolio(files_json: &str, convert: bool) -> Result<Vec<u8>, JsValue> {
     let files: Vec<FileEntry> = serde_json::from_str(files_json)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
@@ -10,7 +11,12 @@ pub fn create_portfolio(files_json: &str) -> Result<Vec<u8>, JsValue> {
         .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     for file in &files {
-        builder.add_file(&file.name, file.data.clone(), "");
+        let (name, data) = if convert {
+            convert_if_needed(&file.name, &file.data)
+        } else {
+            (file.name.clone(), file.data.clone())
+        };
+        builder.add_file(&name, data, "");
     }
 
     builder
@@ -60,6 +66,31 @@ pub fn validate_portfolio(data: Vec<u8>) -> Result<String, JsValue> {
 #[wasm_bindgen]
 pub fn is_portfolio(data: Vec<u8>) -> bool {
     portfolio_core::Portfolio::is_portfolio(&data)
+}
+
+fn convert_if_needed(name: &str, data: &[u8]) -> (String, Vec<u8>) {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    match ext.as_str() {
+        "png" | "jpg" | "jpeg" | "tiff" | "tif" | "webp" | "bmp" | "gif" => {
+            let pdf_name = format!("{}.pdf", name);
+            match image_converter::image_to_pdf(data) {
+                Ok(pdf_data) => (pdf_name, pdf_data),
+                Err(_) => (name.to_string(), data.to_vec()),
+            }
+        }
+        "docx" => {
+            let pdf_name = format!("{}.pdf", name);
+            match docx_converter::docx_to_pdf(data) {
+                Ok(pdf_data) => (pdf_name, pdf_data),
+                Err(_) => (name.to_string(), data.to_vec()),
+            }
+        }
+        _ => (name.to_string(), data.to_vec()),
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

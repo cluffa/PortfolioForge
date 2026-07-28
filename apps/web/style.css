@@ -226,6 +226,19 @@ button.small {
 
 /* ── Status ── */
 
+.actions-row {
+  margin-bottom: 10px;
+}
+
+.toggle-label {
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
 .status {
   color: var(--text-muted);
   font-size: 0.85rem;
