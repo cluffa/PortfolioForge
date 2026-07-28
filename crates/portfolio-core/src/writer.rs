@@ -99,10 +99,12 @@ impl PortfolioBuilder {
             fs.set("EF", Object::Dictionary(ef));
             self.doc.objects.insert(spec_id, Object::Dictionary(fs));
 
-            // Create order object (lower = displayed first)
+            // Create order object (lower = displayed first, Name preserves decimal)
             let mut order_dict = Dictionary::new();
-            let order_val = file_index as f64; // 0.0 is first
-            order_dict.set("adobe:Order", Object::Real(order_val as f32));
+            let order_val = format!("{:.1}", file_index as f64);
+            order_dict.set("adobe:Order", Object::Name(
+                format!("{}", order_val).as_bytes().to_vec(),
+            ));
             let order_id = (next_id, 0u16);
             next_id += 1;
             self.doc.objects.insert(order_id, Object::Dictionary(order_dict));
