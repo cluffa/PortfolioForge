@@ -70,6 +70,15 @@ impl PortfolioBuilder {
                 "UF",
                 Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal),
             );
+            // Description: use filename stem as display title
+            let desc = std::path::Path::new(name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(name);
+            fs.set(
+                "Desc",
+                Object::String(desc.as_bytes().to_vec(), lopdf::StringFormat::Literal),
+            );
             let mut ef = Dictionary::new();
             ef.set("F", Object::Reference(stream_id));
             fs.set("EF", Object::Dictionary(ef));
@@ -96,13 +105,27 @@ impl PortfolioBuilder {
         next_id += 1;
         doc.objects.insert(names_id, Object::Dictionary(names));
 
-        // /Collection dict
+        // /Collection dict with basic Schema for display
         let mut collection = Dictionary::new();
         collection.set("Type", "Collection");
         collection.set(
             "View",
             Object::Name(self.view_mode.to_pdf_name().as_bytes().to_vec()),
         );
+        // Schema: define fields Acrobat displays in the portfolio view
+        collection.set(
+            "Schema",
+            Object::Array(vec![
+                field("FileName", "Name", 1),
+                field("Description", "Desc", 2),
+                field("ModifiedDate", "ModDate", 3),
+                field("Size", "Size", 4),
+            ]),
+        );
+        // Sort by file name by default
+        let mut sort = Dictionary::new();
+        sort.set("S", Object::Name(b"FileName".to_vec()));
+        collection.set("Sort", Object::Dictionary(sort));
         let coll_id = (next_id, 0u16);
         next_id += 1;
         doc.objects.insert(coll_id, Object::Dictionary(collection));
@@ -159,4 +182,13 @@ impl PortfolioBuilder {
         doc.save_to(&mut buf)?;
         Ok(buf)
     }
+}
+
+/// Create a Collection Schema field entry
+fn field(name: &str, key: &str, order: i64) -> Object {
+    let mut d = Dictionary::new();
+    d.set("N", Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+    d.set("O", Object::Integer(order));
+    d.set("T", Object::Name(format!("adobe:{}", key).as_bytes().to_vec()));
+    Object::Dictionary(d)
 }
