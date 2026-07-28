@@ -112,20 +112,41 @@ impl PortfolioBuilder {
         catalog.set("Type", "Catalog");
         catalog.set("Collection", Object::Reference(coll_id));
         catalog.set("Names", Object::Reference(names_id));
-        // Minimal empty page tree (required by PDF spec even for portfolios)
+
+        // Minimal page (required by PDF spec, even for portfolios)
         let pages_id = (next_id, 0u16);
         next_id += 1;
+        let page_id = (next_id, 0u16);
+        next_id += 1;
+        let content_id = (next_id, 0u16);
+        next_id += 1;
+
+        // Content stream
+        let content_stream = Stream::new(Dictionary::new(), b" ".to_vec());
+        doc.objects.insert(content_id, Object::Stream(content_stream));
+
+        // Page
+        let mut page = Dictionary::new();
+        page.set("Type", "Page");
+        page.set("Parent", Object::Reference(pages_id));
+        page.set("MediaBox", Object::Array(vec![
+            Object::Integer(0), Object::Integer(0),
+            Object::Integer(612), Object::Integer(792),
+        ]));
+        page.set("Contents", Object::Reference(content_id));
+        doc.objects.insert(page_id, Object::Dictionary(page));
+
+        // Pages
+        let mut pages = Dictionary::new();
+        pages.set("Type", "Pages");
+        pages.set("Kids", Object::Array(vec![Object::Reference(page_id)]));
+        pages.set("Count", Object::Integer(1));
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+
         catalog.set("Pages", Object::Reference(pages_id));
         let cat_id = (next_id, 0u16);
         next_id += 1;
         doc.objects.insert(cat_id, Object::Dictionary(catalog));
-
-        // Minimal Pages object
-        let mut pages = Dictionary::new();
-        pages.set("Type", "Pages");
-        pages.set("Kids", Object::Array(vec![]));
-        pages.set("Count", Object::Integer(0));
-        doc.objects.insert(pages_id, Object::Dictionary(pages));
 
         // Trailer
         doc.trailer.set("Root", Object::Reference(cat_id));
