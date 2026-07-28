@@ -10,5 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 portfolio-core = { path = "../portfolio-core" }
+image-converter = { path = "../image-converter" }
+docx-converter = { path = "../docx-converter" }
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1"

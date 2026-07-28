@@ -46,13 +46,60 @@ fn main() -> Result<()> {
         Command::Create { output, files } => {
             let mut builder = PortfolioBuilder::new()?;
             for path in &files {
-                let name = path
+                let original_name = path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .context("Invalid filename")?;
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
                 let data = std::fs::read(path)?;
-                let mime = guess_mime(name);
-                builder.add_file(name, data, &mime);
+
+                // Convert images to PDF before adding
+                let (final_name, final_data, mime) = match ext.as_str() {
+                    "png" | "jpg" | "jpeg" | "tiff" | "tif" | "webp" | "bmp" | "gif" => {
+                        let pdf_name = format!(
+                            "{}.pdf",
+                            std::path::Path::new(original_name)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or(original_name)
+                        );
+                        match image_converter::image_to_pdf(&data) {
+                            Ok(pdf_data) => (pdf_name, pdf_data, "application/pdf".to_string()),
+                            Err(e) => {
+                                eprintln!(
+                                    "Warning: failed to convert {}, adding as-is: {}",
+                                    original_name, e
+                                );
+                                (original_name.to_string(), data, guess_mime(original_name))
+                            }
+                        }
+                    }
+                    "docx" => {
+                        let pdf_name = format!(
+                            "{}.pdf",
+                            std::path::Path::new(original_name)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or(original_name)
+                        );
+                        match docx_converter::docx_to_pdf(&data) {
+                            Ok(pdf_data) => (pdf_name, pdf_data, "application/pdf".to_string()),
+                            Err(e) => {
+                                eprintln!(
+                                    "Warning: failed to convert {}, adding as-is: {}",
+                                    original_name, e
+                                );
+                                (original_name.to_string(), data, guess_mime(original_name))
+                            }
+                        }
+                    }
+                    _ => (original_name.to_string(), data, guess_mime(original_name)),
+                };
+                builder.add_file(&final_name, final_data, &mime);
             }
             let pdf_data = builder.build()?;
             std::fs::write(&output, pdf_data)?;

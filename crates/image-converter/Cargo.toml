@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# Stub - not yet implemented
-
 [dependencies]
+image = "0.25"
+lopdf = "0.44"
+flate2 = "1"
+thiserror = "2"
+
+[dev-dependencies]
+lopdf = "0.44"
