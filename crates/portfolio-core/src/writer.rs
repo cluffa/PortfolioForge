@@ -1,43 +1,20 @@
-use std::io::Cursor;
-
 use lopdf::{Dictionary, Object, Stream};
 
 use crate::error::PortfolioError;
 use crate::types::ViewMode;
 
-/// Builder for creating new PDF Portfolios using the Acrobat template for cover page
 pub struct PortfolioBuilder {
-    doc: lopdf::Document,
+    view_mode: ViewMode,
     files: Vec<(String, Vec<u8>)>,
 }
 
 impl PortfolioBuilder {
-    /// Start building from the Acrobat template (has cover page, layout, schema)
     pub fn new() -> Result<Self, PortfolioError> {
-        let template = include_bytes!("../../../samples/Portfolio2.pdf");
-        let doc = lopdf::Document::load_from(Cursor::new(template.as_ref()))?;
-        Ok(Self {
-            doc,
-            files: Vec::new(),
-        })
+        Ok(Self { view_mode: ViewMode::Tile, files: Vec::new() })
     }
 
     pub fn set_view(&mut self, mode: ViewMode) -> &mut Self {
-        // Update the existing Collection's /View
-        if let Ok(catalog) = self.doc.catalog() {
-            if let Ok(coll) = catalog.get(b"Collection") {
-                if let Ok(coll_id) = coll.as_reference() {
-                    if let Ok(obj) = self.doc.get_object_mut(coll_id) {
-                        if let Ok(dict) = obj.as_dict_mut() {
-                            dict.set(
-                                "View",
-                                Object::Name(mode.to_pdf_name().as_bytes().to_vec()),
-                            );
-                        }
-                    }
-                }
-            }
-        }
+        self.view_mode = mode;
         self
     }
 
@@ -46,110 +23,147 @@ impl PortfolioBuilder {
         self
     }
 
-    pub fn build(mut self) -> Result<Vec<u8>, PortfolioError> {
+    pub fn build(self) -> Result<Vec<u8>, PortfolioError> {
+        let mut doc = lopdf::Document::new();
+        doc.version = "1.7".to_string();
+        let mut next: u32 = 1;
+        let mut alloc = || { let id = (next, 0u16); next += 1; id };
+
+        // ── Cover page content ──
+        let mut cover_text = String::from(
+            "BT\n/F1 24 Tf\n72 720 Td\n(PortfolioForge) Tj\nT*\n"
+        );
+        cover_text.push_str("/F1 12 Tf\n0 -20 Td\n");
+        cover_text.push_str("(This PDF Portfolio contains multiple documents.) Tj\nT*\n");
+        cover_text.push_str("(For the best experience, open in Adobe Acrobat.) Tj\nT*\n");
+        cover_text.push_str("0 -20 Td\n/F1 10 Tf\n(Contents:) Tj\nT*\n");
+        for (i, (name, _)) in self.files.iter().enumerate() {
+            cover_text.push_str(&format!(
+                "({}. {}) Tj\nT*\n",
+                i + 1,
+                name.replace('\\', "\\\\").replace('(', "\\(").replace(')', "\\)")
+            ));
+        }
+        cover_text.push_str("ET\n");
+
+        // Font: Helvetica
+        let mut fonts = Dictionary::new();
+        let mut f1 = Dictionary::new();
+        f1.set("Type", "Font"); f1.set("Subtype", "Type1"); f1.set("BaseFont", "Helvetica");
+        fonts.set("F1", Object::Dictionary(f1));
+        let mut resources = Dictionary::new();
+        resources.set("Font", Object::Dictionary(fonts));
+
+        let cover_stream = Stream::new(Dictionary::new(), cover_text.into_bytes());
+        let content_id = alloc();
+        doc.objects.insert(content_id, Object::Stream(cover_stream));
+
+        let pages_id = alloc();
+        let page_id = alloc();
+        let mut page = Dictionary::new();
+        page.set("Type", "Page");
+        page.set("Parent", Object::Reference(pages_id));
+        page.set("MediaBox", Object::Array(vec![
+            Object::Integer(0), Object::Integer(0),
+            Object::Integer(612), Object::Integer(792),
+        ]));
+        page.set("Contents", Object::Reference(content_id));
+        page.set("Resources", Object::Dictionary(resources));
+        doc.objects.insert(page_id, Object::Dictionary(page));
+
+        let mut pages = Dictionary::new();
+        pages.set("Type", "Pages");
+        pages.set("Kids", Object::Array(vec![Object::Reference(page_id)]));
+        pages.set("Count", Object::Integer(1));
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+
+        // ── File entries ──
         let mut names_array: Vec<Object> = Vec::new();
-        let mut order_refs: Vec<Object> = Vec::new();
-        let mut next_id = self.doc.max_id + 1;
-        let mut file_index: usize = 0;
-
         for (name, data) in &self.files {
-            let stream_id = (next_id, 0u16);
-            let spec_id = (next_id + 1, 0u16);
-            next_id += 2;
+            let stream_id = alloc();
+            let spec_id = alloc();
 
-            // EmbeddedFile stream
             let mut sd = Dictionary::new();
             sd.set("Type", "EmbeddedFile");
             let mut params = Dictionary::new();
             params.set("Size", Object::Integer(data.len() as i64));
             let now = chrono::Utc::now();
-            params.set(
-                "ModDate",
-                Object::String(
-                    now.format("D:%Y%m%d%H%M%SZ").to_string().into_bytes(),
-                    lopdf::StringFormat::Literal,
-                ),
-            );
+            params.set("ModDate", Object::String(
+                now.format("D:%Y%m%d%H%M%SZ").to_string().into_bytes(),
+                lopdf::StringFormat::Literal,
+            ));
             sd.set("Params", Object::Dictionary(params));
             let mut stream = Stream::new(sd, data.clone());
             stream.compress().ok();
-            self.doc.objects.insert(stream_id, Object::Stream(stream));
+            doc.objects.insert(stream_id, Object::Stream(stream));
 
-            // Filespec
             let mut fs = Dictionary::new();
             fs.set("Type", "Filespec");
-            fs.set(
-                "F",
-                Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal),
-            );
-            fs.set(
-                "UF",
-                Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal),
-            );
-            let desc = std::path::Path::new(name)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or(name);
-            fs.set(
-                "Desc",
-                Object::String(desc.as_bytes().to_vec(), lopdf::StringFormat::Literal),
-            );
+            fs.set("F", Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+            fs.set("UF", Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+            let desc = std::path::Path::new(name).file_stem()
+                .and_then(|s| s.to_str()).unwrap_or(name);
+            fs.set("Desc", Object::String(desc.as_bytes().to_vec(), lopdf::StringFormat::Literal));
             let mut ef = Dictionary::new();
             ef.set("F", Object::Reference(stream_id));
             fs.set("EF", Object::Dictionary(ef));
-            self.doc.objects.insert(spec_id, Object::Dictionary(fs));
+            doc.objects.insert(spec_id, Object::Dictionary(fs));
 
-            // Create order object (lower = displayed first, Name preserves decimal)
-            let mut order_dict = Dictionary::new();
-            let order_val = format!("{:.1}", file_index as f64);
-            order_dict.set("adobe:Order", Object::Name(
-                format!("{}", order_val).as_bytes().to_vec(),
-            ));
-            let order_id = (next_id, 0u16);
-            next_id += 1;
-            self.doc.objects.insert(order_id, Object::Dictionary(order_dict));
-            order_refs.push(Object::Reference(order_id));
-
-            names_array.push(Object::String(
-                name.as_bytes().to_vec(),
-                lopdf::StringFormat::Literal,
-            ));
+            names_array.push(Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
             names_array.push(Object::Reference(spec_id));
-            file_index += 1;
         }
 
-        // /EmbeddedFiles name tree
+        // /EmbeddedFiles
         let mut ef_dict = Dictionary::new();
         ef_dict.set("Names", Object::Array(names_array));
-        let ef_id = (next_id, 0u16);
-        self.doc.objects.insert(ef_id, Object::Dictionary(ef_dict));
+        let ef_id = alloc();
+        doc.objects.insert(ef_id, Object::Dictionary(ef_dict));
 
-        // Update catalog: add /Names and /Order
         let mut names = Dictionary::new();
         names.set("EmbeddedFiles", Object::Reference(ef_id));
+        let names_id = alloc();
+        doc.objects.insert(names_id, Object::Dictionary(names));
 
-        let catalog = self.doc.catalog_mut()?;
-        catalog.set("Names", Object::Dictionary(names));
+        // /Collection
+        let mut collection = Dictionary::new();
+        collection.set("Type", "Collection");
+        collection.set("View", Object::Name(self.view_mode.to_pdf_name().as_bytes().to_vec()));
+        // Schema: basic fields
+        collection.set("Schema", Object::Array(vec![
+            schema_field("FileName", "Name", 1),
+            schema_field("Description", "Desc", 2),
+            schema_field("Modified", "ModDate", 3),
+            schema_field("Size", "Size", 4),
+        ]));
+        let mut sort = Dictionary::new();
+        sort.set("S", Object::Name(b"FileName".to_vec()));
+        collection.set("Sort", Object::Dictionary(sort));
+        let coll_id = alloc();
+        doc.objects.insert(coll_id, Object::Dictionary(collection));
 
-        // Add /Order to Collection if we have order refs
-        if !order_refs.is_empty() {
-            if let Ok(coll) = catalog.get(b"Collection") {
-                if let Ok(coll_id) = coll.as_reference() {
-                    if let Ok(obj) = self.doc.get_object_mut(coll_id) {
-                        if let Ok(dict) = obj.as_dict_mut() {
-                            dict.set("Order", Object::Array(order_refs));
-                        }
-                    }
-                }
-            }
-        }
+        // Catalog
+        let mut catalog = Dictionary::new();
+        catalog.set("Type", "Catalog");
+        catalog.set("Pages", Object::Reference(pages_id));
+        catalog.set("Collection", Object::Reference(coll_id));
+        catalog.set("Names", Object::Reference(names_id));
+        let cat_id = alloc();
+        doc.objects.insert(cat_id, Object::Dictionary(catalog));
 
-        // Update max_id
-        self.doc.max_id = self.doc.objects.keys().map(|&(id, _)| id).max().unwrap_or(0);
+        doc.trailer.set("Root", Object::Reference(cat_id));
+        doc.max_id = next - 1;
+        doc.reference_table.cross_reference_type = lopdf::xref::XrefType::CrossReferenceStream;
 
-        // Save
         let mut buf = Vec::new();
-        self.doc.save_to(&mut buf)?;
+        doc.save_to(&mut buf)?;
         Ok(buf)
     }
+}
+
+fn schema_field(name: &str, key: &str, order: i64) -> Object {
+    let mut d = Dictionary::new();
+    d.set("N", Object::String(name.as_bytes().to_vec(), lopdf::StringFormat::Literal));
+    d.set("O", Object::Integer(order));
+    d.set("T", Object::Name(format!("adobe:{}", key).as_bytes().to_vec()));
+    Object::Dictionary(d)
 }
