@@ -56,8 +56,10 @@ impl PortfolioBuilder {
                 ),
             );
             stream_dict.set("Params", Object::Dictionary(params));
+            let mut stream = Stream::new(stream_dict, data.clone());
+            stream.compress().ok(); // FlateDecode like Acrobat does
             doc.objects
-                .insert(stream_id, Object::Stream(Stream::new(stream_dict, data.clone())));
+                .insert(stream_id, Object::Stream(stream));
 
             // Filespec dict
             let mut fs = Dictionary::new();

@@ -178,7 +178,7 @@ impl Portfolio {
                             name.clone()
                         };
 
-                        // Get embedded file data from /EF -> /F
+                        // Get embedded file data, decompressing if needed
                         let data = file_dict
                             .get(b"EF")
                             .ok()
@@ -187,7 +187,11 @@ impl Portfolio {
                             .and_then(|stream_ref| {
                                 doc.get_object(stream_ref.as_reference().ok()?).ok()
                             })
-                            .and_then(|obj| obj.as_stream().ok().map(|s| s.content.clone()))
+                            .and_then(|obj| {
+                                obj.as_stream().ok().map(|s| {
+                                    s.decompressed_content().unwrap_or_else(|_| s.content.clone())
+                                })
+                            })
                             .unwrap_or_default();
 
                         let size = data.len() as u64;
