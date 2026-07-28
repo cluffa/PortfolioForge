@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/portfolio-core",
+    "crates/portfolio-wasm",
     "crates/pfcli",
     "crates/image-converter",
     "crates/docx-converter",

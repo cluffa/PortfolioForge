@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PortfolioForge</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>PortfolioForge</h1>
+      <span class="subtitle">Create PDF Portfolios — private, local, no uploads.</span>
+    </header>
+
+    <main class="main">
+      <!-- Drop Zone -->
+      <section class="card drop-section">
+        <div class="drop-zone" id="drop-zone">
+          <p class="drop-label">Drop files or folders here</p>
+          <p class="drop-hint">PDF, PNG, JPG, TIFF, WebP, BMP, GIF, DOCX</p>
+        </div>
+        <div class="drop-actions">
+          <button id="pick-files-btn" type="button">Choose Files</button>
+          <input type="file" id="file-input" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.webp,.bmp,.gif,.docx" />
+          <button id="clear-btn" type="button" class="secondary" disabled>Clear All</button>
+        </div>
+      </section>
+
+      <!-- File List -->
+      <section class="card" id="file-list-section" hidden>
+        <div class="card-header">
+          <h2>Files <span id="file-count" class="badge">0</span></h2>
+          <div class="card-actions">
+            <button id="reorder-btn" type="button" class="secondary">Sort A–Z</button>
+          </div>
+        </div>
+        <ul class="file-list" id="file-list"></ul>
+      </section>
+
+      <!-- Actions -->
+      <section class="card" id="actions-section" hidden>
+        <button id="create-btn" type="button" class="primary large">Create Portfolio</button>
+        <span id="create-status" class="status"></span>
+      </section>
+
+      <!-- Open Existing -->
+      <section class="card">
+        <details>
+          <summary class="card-header summary-header"><h2>Open Existing Portfolio</h2></summary>
+          <div class="open-section">
+            <input type="file" id="open-input" accept=".pdf" hidden />
+            <button id="open-btn" type="button">Choose Portfolio File</button>
+            <span id="open-name" class="status"></span>
+            <ul class="file-list" id="open-file-list"></ul>
+            <div id="open-actions" hidden>
+              <button id="download-file-btn" type="button" class="secondary">Download Selected</button>
+              <span id="open-status" class="status"></span>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- Validate -->
+      <section class="card">
+        <details>
+          <summary class="card-header summary-header"><h2>Validate Portfolio</h2></summary>
+          <div class="open-section">
+            <input type="file" id="validate-input" accept=".pdf" hidden />
+            <button id="validate-btn" type="button">Choose Portfolio to Validate</button>
+            <ul id="validate-results" class="validate-list"></ul>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>All processing is local. Nothing is ever uploaded.</span>
+      <span class="version">v0.1.0</span>
+    </footer>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

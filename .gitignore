@@ -27,3 +27,6 @@ target
 samples/demo_portfolio.pdf
 samples/sample.docx
 samples/sample.png
+
+# WASM build output
+apps/web/public/wasm/
