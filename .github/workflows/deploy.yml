@@ -41,7 +41,7 @@ jobs:
           path: ~/.cargo/bin/wasm-pack
           key: ${{ runner.os }}-wasm-pack-${{ hashFiles('.github/workflows/deploy.yml') }}
 
-      - name: Install wasm-pack
+      - name: Install wasm-pack + wasm-opt
         run: |
           if ! command -v wasm-pack &>/dev/null; then
             curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -49,6 +49,8 @@ jobs:
           # Suppress update nag
           mkdir -p ~/.wasm-pack
           echo "[telemetry]\ncheck_for_updates = false" > ~/.wasm-pack/config.toml
+          # Install wasm-opt for size optimization
+          sudo apt-get update -qq && sudo apt-get install -y -qq binaryen 2>/dev/null || true
 
       - name: Build WASM
         run: wasm-pack build crates/portfolio-wasm --target web --out-dir ../../apps/web/public/wasm
