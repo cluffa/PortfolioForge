@@ -50,7 +50,6 @@ impl PortfolioBuilder {
         let mut names_array: Vec<Object> = Vec::new();
         let mut order_refs: Vec<Object> = Vec::new();
         let mut next_id = self.doc.max_id + 1;
-        let total = self.files.len();
         let mut file_index: usize = 0;
 
         for (name, data) in &self.files {
@@ -100,10 +99,10 @@ impl PortfolioBuilder {
             fs.set("EF", Object::Dictionary(ef));
             self.doc.objects.insert(spec_id, Object::Dictionary(fs));
 
-            // Create order object (higher = displayed first, matches Acrobat)
+            // Create order object (lower = displayed first)
             let mut order_dict = Dictionary::new();
-            let order_val = (total - 1 - file_index) as f32;
-            order_dict.set("adobe:Order", Object::Real(order_val));
+            let order_val = file_index as f64; // 0.0 is first
+            order_dict.set("adobe:Order", Object::Real(order_val as f32));
             let order_id = (next_id, 0u16);
             next_id += 1;
             self.doc.objects.insert(order_id, Object::Dictionary(order_dict));
