@@ -48,7 +48,10 @@ impl PortfolioBuilder {
 
     pub fn build(mut self) -> Result<Vec<u8>, PortfolioError> {
         let mut names_array: Vec<Object> = Vec::new();
+        let mut order_refs: Vec<Object> = Vec::new();
         let mut next_id = self.doc.max_id + 1;
+        let total = self.files.len();
+        let mut file_index: usize = 0;
 
         for (name, data) in &self.files {
             let stream_id = (next_id, 0u16);
@@ -97,11 +100,21 @@ impl PortfolioBuilder {
             fs.set("EF", Object::Dictionary(ef));
             self.doc.objects.insert(spec_id, Object::Dictionary(fs));
 
+            // Create order object (higher = displayed first, matches Acrobat)
+            let mut order_dict = Dictionary::new();
+            let order_val = (total - 1 - file_index) as f32;
+            order_dict.set("adobe:Order", Object::Real(order_val));
+            let order_id = (next_id, 0u16);
+            next_id += 1;
+            self.doc.objects.insert(order_id, Object::Dictionary(order_dict));
+            order_refs.push(Object::Reference(order_id));
+
             names_array.push(Object::String(
                 name.as_bytes().to_vec(),
                 lopdf::StringFormat::Literal,
             ));
             names_array.push(Object::Reference(spec_id));
+            file_index += 1;
         }
 
         // /EmbeddedFiles name tree
@@ -110,12 +123,25 @@ impl PortfolioBuilder {
         let ef_id = (next_id, 0u16);
         self.doc.objects.insert(ef_id, Object::Dictionary(ef_dict));
 
-        // Update catalog: add /Names pointing to our EmbeddedFiles
+        // Update catalog: add /Names and /Order
         let mut names = Dictionary::new();
         names.set("EmbeddedFiles", Object::Reference(ef_id));
 
         let catalog = self.doc.catalog_mut()?;
         catalog.set("Names", Object::Dictionary(names));
+
+        // Add /Order to Collection if we have order refs
+        if !order_refs.is_empty() {
+            if let Ok(coll) = catalog.get(b"Collection") {
+                if let Ok(coll_id) = coll.as_reference() {
+                    if let Ok(obj) = self.doc.get_object_mut(coll_id) {
+                        if let Ok(dict) = obj.as_dict_mut() {
+                            dict.set("Order", Object::Array(order_refs));
+                        }
+                    }
+                }
+            }
+        }
 
         // Update max_id
         self.doc.max_id = self.doc.objects.keys().map(|&(id, _)| id).max().unwrap_or(0);
